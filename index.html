@@ -54,7 +54,13 @@
         google.script.run
           .withSuccessHandler(() => {
             refreshData(true);
-            setView('my-requests');
+            // Conditional redirection based on action type
+            if (func === 'bookRoom' || func === 'bookAppointment') {
+              setView('my-requests');
+            } else if (func === 'addRoom') {
+              setView('admin-rooms');
+            }
+            // For toggleRoomStatus and createAppointmentSlots, we stay on the current view
           })
           .withFailureHandler(err => {
             alert("Error: " + err.message);
@@ -105,7 +111,7 @@
                   </header>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                     <StatCard label="My Total Bookings" val={data.myApts.length} color="blue" />
-                    <StatCard label="Active Training Rooms" val={data.rooms.filter(r=>r.status==='Active').length} color="indigo" />
+                    <StatCard label="Active Training Rooms" val={data.rooms.filter(r=>r.status!=='Inactive').length} color="indigo" />
                     <StatCard label="Available Host Slots" val={data.appointmentSlots.length} color="emerald" />
                   </div>
                 </div>
@@ -116,14 +122,14 @@
                   <h2 className="text-3xl font-bold">Room Selection</h2>
                   {!selectedRoom ? (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      {data.rooms.filter(r => r.status === 'Active').map(r => (
+                      {data.rooms.filter(r => r.status !== 'Inactive').map(r => (
                         <div key={r.id} onClick={()=>setSelectedRoom(r)} className="bg-white p-8 rounded-3xl border border-slate-100 hover:border-blue-500 transition-all cursor-pointer shadow-sm group">
                           <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-2xl mb-4 group-hover:bg-blue-50">🏢</div>
                           <p className="font-bold text-xl">{r.name}</p>
                           <p className="text-slate-400 text-sm mt-1">📍 {r.location}</p>
                         </div>
                       ))}
-                      {data.rooms.filter(r=>r.status==='Active').length === 0 && <p className="italic text-slate-400">No active rooms found.</p>}
+                      {data.rooms.filter(r=>r.status!=='Inactive').length === 0 && <p className="italic text-slate-400">No active rooms found.</p>}
                     </div>
                   ) : (
                     <div className="bg-white p-10 rounded-[40px] border shadow-sm section-fade">
@@ -142,6 +148,7 @@
                                ))
                              ) : <p className="text-slate-400 text-sm italic">All time slots available for this room.</p>}
                            </div>
+                           <p className="mt-4 text-[10px] text-slate-400 italic">Only the specific time slots listed above are blocked. All other times remain available for booking.</p>
                         </div>
                         <form onSubmit={(e)=>{
                           e.preventDefault();
@@ -189,16 +196,19 @@
                             <td className="p-8 font-extrabold">{r.name}</td>
                             <td className="p-8 text-slate-500 font-bold">{r.location}</td>
                             <td className="p-8">
-                              <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${r.status==='Active' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+                              <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${r.status!=='Inactive' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
                                 {r.status}
                               </span>
                             </td>
                             <td className="p-8 text-right">
                               <button 
-                                onClick={()=>handleAction('toggleRoomStatus', r.id, r.status === 'Active' ? 'Inactive' : 'Active')}
-                                className="text-blue-600 font-bold hover:underline"
+                                onClick={() => {
+                                  const newStatus = r.status === 'Inactive' ? 'Active' : 'Inactive';
+                                  handleAction('toggleRoomStatus', r.id, newStatus);
+                                }}
+                                className={`font-bold hover:underline ${r.status !== 'Inactive' ? 'text-rose-600' : 'text-emerald-600'}`}
                               >
-                                {r.status === 'Active' ? 'Deactivate' : 'Activate'}
+                                {r.status !== 'Inactive' ? 'Deactivate' : 'Activate'}
                               </button>
                             </td>
                           </tr>

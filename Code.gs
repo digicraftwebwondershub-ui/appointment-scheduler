@@ -99,7 +99,7 @@ function toggleRoomStatus(roomId, newStatus) {
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   const sheet = ss.getSheetByName('Rooms');
   const data = sheet.getDataRange().getValues();
-  const idx = data.findIndex(r => String(r[0]) === String(roomId));
+  const idx = data.findIndex(r => String(r[0]).trim() === String(roomId).trim());
   if (idx > -1) {
     sheet.getRange(idx + 1, 6).setValue(newStatus);
     return { success: true };
@@ -150,8 +150,9 @@ function bookAppointment(slotId) {
 
 function addRoom(name, capacity, location, notes) {
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const trimmedName = String(name).trim();
   // Using Room Name as ID if UUID is too complex for matching
-  ss.getSheetByName('Rooms').appendRow([name, name, capacity, location, notes, 'Active']);
+  ss.getSheetByName('Rooms').appendRow([trimmedName, trimmedName, capacity, location, notes, 'Active']);
   return { success: true };
 }
 
