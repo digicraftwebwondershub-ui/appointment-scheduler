@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Enterprise Hub</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8fafc; color: #1e293b; overflow: hidden; }
+    .glass { background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(14px); border-right: 1px solid #e2e8f0; }
+    .nav-active { background: #2563eb !important; color: white !important; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2); }
+    .spinner { border: 3px solid rgba(59, 130, 246, 0.1); border-top: 3px solid #2563eb; border-radius: 50%; width: 32px; height: 32px; animation: spin 0.8s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .fade-in { animation: fadeIn 0.3s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    const App = () => {
+      const [view, setView] = useState('dashboard');
+      const [isOverlayLoading, setOverlayLoading] = useState(true);
+      const [data, setData] = useState({ rooms: [], roomReservations: [], appointmentSlots: [], myApts: [] });
+      const [selectedRoom, setSelectedRoom] = useState(null);
+      
+      const userEmail = "<?= userEmail ?>";
+      const userRole = "<?= userRole ?>";
+      const userName = "<?= userName ?>";
+
+      useEffect(() => { refreshData(); }, []);
+
+      const refreshData = (showOverlay = true) => {
+        if (showOverlay) setOverlayLoading(true);
+        google.script.run
+          .withSuccessHandler(res => {
+            setData(res || { rooms: [], roomReservations: [], appointmentSlots: [], myApts: [] });
+            setOverlayLoading(false);
+          })
+          .withFailureHandler(err => {
+            console.error("Fetch failed:", err);
+            setOverlayLoading(false);
+          })
+          .getInitialData();
+      };
+
+      const handleAction = (func, ...args) => {
+        setOverlayLoading(true);
+        google.script.run
+          .withSuccessHandler(() => {
+            refreshData(true);
+            setView('my-requests');
+          })
+          .withFailureHandler(err => {
+            alert("Error: " + err.message);
+            setOverlayLoading(false);
+          })[func](...args);
+      };
+
+      return (
+        <div className="flex h-screen overflow-hidden">
+          {isOverlayLoading && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-white/70 backdrop-blur-md">
+              <div className="flex flex-col items-center">
+                <div className="spinner mb-4"></div>
+                <p className="text-[10px] font-black text-blue-600 tracking-widest uppercase animate-pulse">Synchronizing</p>
+              </div>
+            </div>
+          )}
+
+          <aside className="w-72 glass flex flex-col p-8 flex-shrink-0">
+            <div className="flex items-center gap-3 mb-12 px-2">
+              <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-black italic shadow-lg">S</div>
+              <span className="font-bold text-xl tracking-tight text-slate-800 uppercase">Enterprise</span>
+            </div>
+
+            <nav className="space-y-2">
+              <NavBtn icon="🏠" label="Dashboard" active={view==='dashboard'} onClick={()=>setView('dashboard')} />
+              <NavBtn icon="🏢" label="Room Booking" active={view==='rooms'} onClick={()=>{setView('rooms'); setSelectedRoom(null)}} />
+              <NavBtn icon="🤝" label="Appointments" active={view==='appointments'} onClick={()=>{setView('appointments'); setSelectedRoom(null)}} />
+              <NavBtn icon="📑" label="My Requests" active={view==='my-requests'} onClick={()=>setView('my-requests')} />
+              
+              {userRole === 'Admin' && (
+                <div className="mt-10 pt-10 border-t border-slate-200">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 px-4">Administration</p>
+                  <NavBtn icon="🛠️" label="Room Manager" active={view==='admin-rooms'} onClick={()=>setView('admin-rooms')} />
+                  <NavBtn icon="⚙️" label="Create Slots" active={view==='admin-slots'} onClick={()=>setView('admin-slots')} />
+                </div>
+              )}
+            </nav>
+          </aside>
+
+          <main className="flex-grow overflow-y-auto p-12 bg-[#f8fafc]">
+            <div className="fade-in max-w-5xl mx-auto">
+              {view === 'dashboard' && (
+                <div className="space-y-10">
+                  <header>
+                    <h1 className="text-4xl font-extrabold tracking-tight">Hi, {userName}!</h1>
+                    <p className="text-slate-500 font-medium mt-1 uppercase tracking-widest text-xs">Workspace Dashboard</p>
+                  </header>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    <StatCard label="My Total Bookings" val={data.myApts.length} color="blue" />
+                    <StatCard label="Active Training Rooms" val={data.rooms.filter(r=>r.status==='Active').length} color="indigo" />
+                    <StatCard label="Available Host Slots" val={data.appointmentSlots.length} color="emerald" />
+                  </div>
+                </div>
+              )}
+
+              {view === 'rooms' && (
+                <div className="space-y-8">
+                  <h2 className="text-3xl font-bold">Room Selection</h2>
+                  {!selectedRoom ? (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      {data.rooms.filter(r => r.status === 'Active').map(r => (
+                        <div key={r.id} onClick={()=>setSelectedRoom(r)} className="bg-white p-8 rounded-3xl border border-slate-100 hover:border-blue-500 transition-all cursor-pointer shadow-sm group">
+                          <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-2xl mb-4 group-hover:bg-blue-50">🏢</div>
+                          <p className="font-bold text-xl">{r.name}</p>
+                          <p className="text-slate-400 text-sm mt-1">📍 {r.location}</p>
+                        </div>
+                      ))}
+                      {data.rooms.filter(r=>r.status==='Active').length === 0 && <p className="italic text-slate-400">No active rooms found.</p>}
+                    </div>
+                  ) : (
+                    <div className="bg-white p-10 rounded-[40px] border shadow-sm section-fade">
+                      <button onClick={()=>setSelectedRoom(null)} className="text-blue-600 font-bold mb-8 text-sm flex items-center gap-1 hover:underline">← Back to Selection</button>
+                      <h3 className="text-2xl font-bold mb-6 italic">Reserve {selectedRoom.name}</h3>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+                        <div className="space-y-4">
+                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Reserved Times</p>
+                           <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
+                             {data.roomReservations.filter(res => String(res.roomId) === String(selectedRoom.id)).length > 0 ? (
+                               data.roomReservations.filter(res => String(res.roomId) === String(selectedRoom.id)).map(res => (
+                                 <div key={res.id} className="p-4 bg-slate-50 rounded-2xl flex justify-between items-center border border-slate-100">
+                                   <span className="font-bold text-sm text-slate-600">{new Date(res.date).toLocaleDateString([], {month:'short', day:'numeric'})}</span>
+                                   <span className="text-blue-600 font-black text-xs">{res.start} - {res.end}</span>
+                                 </div>
+                               ))
+                             ) : <p className="text-slate-400 text-sm italic">All time slots available for this room.</p>}
+                           </div>
+                        </div>
+                        <form onSubmit={(e)=>{
+                          e.preventDefault();
+                          const fd = new FormData(e.target);
+                          handleAction('bookRoom', selectedRoom.id, fd.get('date'), fd.get('start'), fd.get('end'));
+                        }} className="space-y-6">
+                           <div>
+                             <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Date</label>
+                             <input type="date" name="date" className="w-full mt-2 p-4 bg-slate-50 rounded-2xl outline-none font-bold" required />
+                           </div>
+                           <div className="grid grid-cols-2 gap-4">
+                             <div>
+                               <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Start Time</label>
+                               <input type="time" name="start" className="w-full mt-2 p-4 bg-slate-50 rounded-2xl outline-none font-bold" required />
+                             </div>
+                             <div>
+                               <label className="text-[10px] font-black uppercase text-slate-400 ml-1">End Time</label>
+                               <input type="time" name="end" className="w-full mt-2 p-4 bg-slate-50 rounded-2xl outline-none font-bold" required />
+                             </div>
+                           </div>
+                           <button className="w-full bg-blue-600 text-white font-bold py-5 rounded-[28px] shadow-xl shadow-blue-100 hover:scale-[1.02] transition-all">Submit Reservation</button>
+                        </form>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {view === 'admin-rooms' && (
+                <div className="space-y-8">
+                  <div className="flex justify-between items-center">
+                    <h2 className="text-3xl font-bold">Room Management</h2>
+                    <button onClick={()=>setView('add-room-form')} className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-bold text-sm">Add Resource</button>
+                  </div>
+                  <div className="bg-white rounded-[32px] border shadow-sm overflow-hidden">
+                    <table className="w-full text-left font-medium">
+                      <thead className="bg-slate-50 border-b border-slate-100">
+                        <tr className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                          <th className="p-8">Name</th><th className="p-8">Location</th><th className="p-8">Visibility</th><th className="p-8 text-right">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {data.rooms.map(r => (
+                          <tr key={r.id} className="text-sm">
+                            <td className="p-8 font-extrabold">{r.name}</td>
+                            <td className="p-8 text-slate-500 font-bold">{r.location}</td>
+                            <td className="p-8">
+                              <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${r.status==='Active' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+                                {r.status}
+                              </span>
+                            </td>
+                            <td className="p-8 text-right">
+                              <button 
+                                onClick={()=>handleAction('toggleRoomStatus', r.id, r.status === 'Active' ? 'Inactive' : 'Active')}
+                                className="text-blue-600 font-bold hover:underline"
+                              >
+                                {r.status === 'Active' ? 'Deactivate' : 'Activate'}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {view === 'add-room-form' && (
+                <div className="bg-white p-12 rounded-[48px] border shadow-sm max-w-xl mx-auto">
+                   <h2 className="text-2xl font-bold mb-8 italic text-center text-slate-800">New Room Entry</h2>
+                   <form onSubmit={(e)=>{
+                     e.preventDefault();
+                     const fd = new FormData(e.target);
+                     handleAction('addRoom', fd.get('name'), fd.get('cap'), fd.get('loc'), fd.get('notes'));
+                   }} className="space-y-4">
+                     <input name="name" placeholder="Training Room Name" className="w-full p-4 bg-slate-50 rounded-2xl border border-transparent focus:border-blue-200 outline-none transition-all" required />
+                     <div className="grid grid-cols-2 gap-4">
+                       <input name="cap" placeholder="Capacity" type="number" className="w-full p-4 bg-slate-50 rounded-2xl border border-transparent focus:border-blue-200 outline-none transition-all" required />
+                       <input name="loc" placeholder="Floor / Location" className="w-full p-4 bg-slate-50 rounded-2xl border border-transparent focus:border-blue-200 outline-none transition-all" required />
+                     </div>
+                     <textarea name="notes" placeholder="Equipment and Setup Notes..." className="w-full p-4 bg-slate-50 rounded-2xl border border-transparent focus:border-blue-200 outline-none transition-all" rows="3"></textarea>
+                     <button className="w-full bg-slate-900 text-white font-bold py-5 rounded-[28px] shadow-xl hover:bg-black mt-4 transition-all">Register Room</button>
+                     <button type="button" onClick={()=>setView('admin-rooms')} className="w-full text-slate-400 font-bold py-2 text-sm">Return to List</button>
+                   </form>
+                </div>
+              )}
+
+              {/* These views remain integrated and safe */}
+              {view === 'appointments' && (
+                <div className="space-y-8">
+                  <h2 className="text-3xl font-bold">Appointment Slots</h2>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {data.appointmentSlots.map(s => (
+                      <div key={s.slotId} className={`p-6 rounded-3xl border flex flex-col items-center transition-all ${s.status === 'Booked' ? 'bg-slate-50 opacity-50' : 'bg-white border-blue-50 shadow-sm hover:border-blue-400'}`}>
+                        <p className="font-bold text-lg">{new Date(s.start).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p>
+                        <p className="text-[10px] font-black text-slate-400 mt-1 uppercase tracking-tighter">{s.resourceName}</p>
+                        <button 
+                          disabled={s.status === 'Booked'}
+                          onClick={()=>handleAction('bookAppointment', s.slotId)} 
+                          className={`w-full mt-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest ${s.status === 'Booked' ? 'bg-slate-200 text-slate-400' : 'bg-blue-600 text-white shadow-lg shadow-blue-50'}`}>
+                          {s.status === 'Booked' ? 'Taken' : 'Reserve'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {view === 'my-requests' && (
+                <div className="space-y-8">
+                   <h2 className="text-3xl font-bold">My Current Requests</h2>
+                   <div className="bg-white rounded-[40px] border shadow-sm overflow-hidden">
+                    <table className="w-full text-left">
+                      <thead className="bg-slate-50 border-b border-slate-100">
+                        <tr className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                          <th className="p-8">Subject</th><th className="p-8">Scheduled For</th><th className="p-8">Category</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {data.myApts.map(a => (
+                          <tr key={a.id} className="text-sm hover:bg-slate-50/50">
+                            <td className="p-8 font-extrabold text-slate-800">{a.resource}</td>
+                            <td className="p-8 text-slate-500 font-bold">{a.time}</td>
+                            <td className="p-8"><span className="px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-[10px] font-black uppercase tracking-wider">{a.category}</span></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {view === 'admin-slots' && (
+                <div className="bg-white p-12 rounded-[48px] border shadow-sm max-w-xl mx-auto">
+                   <h2 className="text-2xl font-bold mb-8 italic text-center">Generate Batch Slots</h2>
+                   <form onSubmit={(e)=>{
+                     e.preventDefault();
+                     const fd = new FormData(e.target);
+                     handleAction('createAppointmentSlots', fd.get('host'), fd.get('date'), fd.get('start'), fd.get('end'), parseInt(fd.get('dur')));
+                   }} className="space-y-4">
+                     <input name="host" placeholder="Host / Person Name" className="w-full p-4 bg-slate-50 rounded-2xl outline-none transition-all" required />
+                     <input type="date" name="date" className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold" required />
+                     <div className="grid grid-cols-3 gap-2">
+                       <input type="time" name="start" className="p-4 bg-slate-50 rounded-xl outline-none" required />
+                       <input type="time" name="end" className="p-4 bg-slate-50 rounded-xl outline-none" required />
+                       <select name="dur" className="p-4 bg-slate-50 rounded-xl outline-none font-black text-[10px]">
+                         <option value="30">30 MINS</option><option value="60">1 HOUR</option>
+                       </select>
+                     </div>
+                     <button className="w-full bg-blue-600 text-white font-bold py-5 rounded-[28px] mt-4 shadow-xl shadow-blue-100 active:scale-95 transition-all">Deploy Appointment Slots</button>
+                   </form>
+                </div>
+              )}
+
+            </div>
+          </main>
+        </div>
+      );
+    };
+
+    const NavBtn = ({ icon, label, active, onClick }) => (
+      <button onClick={onClick} className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl text-sm font-bold transition-all ${active ? 'nav-active' : 'text-slate-500 hover:bg-slate-50'}`}>
+        <span className="text-xl">{icon}</span> {label}
+      </button>
+    );
+
+    const StatCard = ({ label, val, color }) => (
+      <div className="bg-white p-10 rounded-[36px] border border-slate-100 shadow-sm flex flex-col items-center">
+        <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">{label}</p>
+        <p className={`text-5xl font-extrabold text-${color}-600 tracking-tighter`}>{val}</p>
+      </div>
+    );
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
